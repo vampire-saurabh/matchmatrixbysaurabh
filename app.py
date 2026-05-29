@@ -1,6 +1,4 @@
 import streamlit as st
-import json
-import random
 
 st.set_page_config(page_title="Match Matrix Engine", page_icon="🏏", layout="centered")
 
@@ -16,6 +14,13 @@ st.markdown("""
         margin-bottom: 15px;
         text-align: center;
     }
+    .score-breakdown-card {
+        background-color: #f8f9fa;
+        border: 1px solid #e2e8f0;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+    }
     .grid-container {
         display: grid;
         grid-template-columns: 1fr auto 1fr;
@@ -26,10 +31,6 @@ st.markdown("""
         padding: 10px;
         border-radius: 8px;
     }
-    .squad-card-ms { background-color: #e8f0fe; padding: 12px; border-radius: 8px; border-left: 5px solid #1a73e8; margin-bottom: 10px; }
-    .squad-card-mn { background-color: #e6f4ea; padding: 12px; border-radius: 8px; border-left: 5px solid #137333; margin-bottom: 10px; }
-    .team-blue { color: #1a73e8; font-weight: bold; font-size: 14px; }
-    .team-green { color: #137333; font-weight: bold; font-size: 14px; }
     .team-blue-card { color: #6ba4ff; font-weight: bold; font-size: 14px; }
     .team-green-card { color: #5eff8b; font-weight: bold; font-size: 14px; }
     .vs-badge { background: #e74c3c; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; }
@@ -47,7 +48,8 @@ def get_shared_server_state():
         "mn_team": [], 
         "ms_backup": [], 
         "mn_backup": [],
-        "player_stats": {}  # Stores performance stats
+        "player_stats": {},
+        "custom_players": []  # Tracks extra players added on the fly
     }
 
 shared_state = get_shared_server_state()
@@ -92,117 +94,120 @@ ms_backup = shared_state["ms_backup"]
 mn_backup = shared_state["mn_backup"]
 stats_store = shared_state["player_stats"]
 
-full_pool = ROSTERS[selected_match]
+# Combine the fixed fixture lists with any custom added players
+full_pool = ROSTERS[selected_match] + shared_state["custom_players"]
 unavailable = ms_team + mn_team + ms_backup + mn_backup
 current_pool = [p for p in full_pool if p not in unavailable]
 
 # -------------------------------------------------------------
 # AUTOMATED CALCULATION ENGINE
 # -------------------------------------------------------------
-def calculate_player_score(player_name):
-    """Standard Fantasy Matrix Points Rule Matrix"""
+def get_breakdown(player_name):
     if not player_name or player_name == "---":
-        return 0
-    p_data = stats_store.get(player_name, {"runs": 0, "wickets": 0, "catches": 0})
-    return (p_data["runs"] * 1) + (p_data["wickets"] * 20) + (p_data["catches"] * 8)
+        return {"runs": 0, "wickets": 0, "catches": 0, "total": 0}
+    d = stats_store.get(player_name, {"runs": 0, "wickets": 0, "catches": 0})
+    total = (d["runs"] * 1) + (d["wickets"] * 20) + (d["catches"] * 8)
+    return {"runs": d["runs"], "wickets": d["wickets"], "catches": d["catches"], "total": total}
 
 # -------------------------------------------------------------
-# FINAL VIEW: POINTS MATRIX CARD + HEAD-TO-HEAD MATRIX GRID (STEP 8)
+# POST-MATCH RESULTS & SCORECARDS (STEP 8)
 # -------------------------------------------------------------
 if current_step >= 8:
     st.balloons()
     
-    # 1. LIVE SCORES SUMMARY MATRIX
-    ms_total = sum(calculate_player_score(p) for p in ms_team) + sum(calculate_player_score(p) for p in ms_backup)
-    mn_total = sum(calculate_player_score(p) for p in mn_team) + sum(calculate_player_score(p) for p in mn_backup)
+    ms_total = sum(get_breakdown(p)["total"] for p in ms_team) + sum(get_breakdown(p)["total"] for p in ms_backup)
+    mn_total = sum(get_breakdown(p)["total"] for p in mn_team) + sum(get_breakdown(p)["total"] for p in mn_backup)
     
+    # Live Total Score Match Card
     st.markdown(f"""
     <div class="matrix-card">
-        <h3 style="margin:0; font-size:18px;">📊 LIVE MATCH MATRIX CARD</h3>
-        <p style="margin:4px 0 10px 0; font-size:11px; opacity:0.8;">{selected_match}</p>
-        <div style="display:flex; justify-content:space-around; align-items:center; margin-top:5px;">
+        <h3 style="margin:0; font-size:16px;">🏆 LIVE FANTASY SCORECARD</h3>
+        <div style="display:flex; justify-content:space-around; align-items:center; margin-top:10px;">
             <div>
-                <div style="font-size:12px; color:#6ba4ff;">MUKESH SIR</div>
+                <div style="font-size:11px; color:#6ba4ff;">MUKESH SIR</div>
                 <div style="font-size:22px; font-weight:bold;">{ms_total} pts</div>
             </div>
-            <div style="font-size:20px; font-weight:bold; color:#e74c3c;">VS</div>
+            <div style="font-size:18px; font-weight:bold; color:#e74c3c;">VS</div>
             <div>
-                <div style="font-size:12px; color:#5eff8b;">MIDHA & NEGI</div>
+                <div style="font-size:11px; color:#5eff8b;">MIDHA & NEGI</div>
                 <div style="font-size:22px; font-weight:bold;">{mn_total} pts</div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    if ms_total > mn_total:
-        st.info("🏆 Leaderboard Standing: Mukesh Sir is Winning!")
-    elif mn_total > ms_total:
-        st.success("🏆 Leaderboard Standing: Midha & Negi are Winning!")
-    else:
-        st.warning("⚖️ Leaderboard Standing: Scores are dead tied!")
-
-    # 2. PERFORMANCE INPUT CONSOLE (DURING LIVE MATCH)
-    st.markdown("---")
-    st.markdown("### 🛠️ Score Calculator Entry")
-    all_drafted_players = sorted(list(set(ms_team + mn_team + ms_backup + mn_backup)))
-    target_player = st.selectbox("Select Player to Input Stats:", all_drafted_players)
+    # Performance Editor Console
+    st.markdown("### 🛠️ Live Performance Entry")
+    all_drafted = sorted(list(set(ms_team + mn_team + ms_backup + mn_backup)))
+    target_p = st.selectbox("Select Player to Update Live Stats:", all_drafted)
     
-    if target_player not in stats_store:
-        stats_store[target_player] = {"runs": 0, "wickets": 0, "catches": 0}
+    if target_p not in stats_store:
+        stats_store[target_p] = {"runs": 0, "wickets": 0, "catches": 0}
         
-    col_in1, col_in2, col_in3 = st.columns(3)
-    with col_in1:
-        new_runs = st.number_input("Runs:", min_value=0, value=stats_store[target_player]["runs"], step=1)
-    with col_in2:
-        new_wicks = st.number_input("Wickets:", min_value=0, value=stats_store[target_player]["wickets"], step=1)
-    with col_in3:
-        new_catches = st.number_input("Catches:", min_value=0, value=stats_store[target_player]["catches"], step=1)
-        
-    if st.button("💾 Update Scores & Recalculate Card", use_container_width=True):
-        stats_store[target_player] = {"runs": new_runs, "wickets": new_wicks, "catches": new_catches}
-        st.success(f"Scores synchronized for {target_player}!")
+    c1, c2, c3 = st.columns(3)
+    with c1: r_in = st.number_input("Runs:", min_value=0, value=stats_store[target_p]["runs"], step=1, key="r_i")
+    with c2: w_in = st.number_input("Wickets:", min_value=0, value=stats_store[target_p]["wickets"], step=1, key="w_i")
+    with c3: cat_in = st.number_input("Catches:", min_value=0, value=stats_store[target_p]["catches"], step=1, key="c_i")
+    
+    if st.button("💾 Save & Calculate Live Card", use_container_width=True):
+        stats_store[target_p] = {"runs": r_in, "wickets": w_in, "catches": cat_in}
         st.rerun()
 
-    # 3. THE 3x3 VISUAL HEAD-TO-HEAD COMPONENT ROWS
+    # The Fantasy Calculations Card Option Breakdown
     st.markdown("---")
-    st.markdown("### 📋 Head-to-Head Player Score Matrix")
+    st.markdown("### 📋 Detailed Fantasy Points Cards")
     
+    tab1, tab2 = st.tabs(["🔵 Mukesh Sir Points", "🟢 Midha & Negi Points"])
+    
+    with tab1:
+        for p in ms_team + ms_backup:
+            b = get_breakdown(p)
+            st.markdown(f"""
+            <div class="score-breakdown-card">
+                <b style="color:#1a73e8;">{p}</b> — <b>{b['total']} Pts Total</b><br>
+                <span style="font-size:12px; color:#555;">🏏 {b['runs']} Runs | 🎯 {b['wickets']} Wickets | 🤲 {b['catches']} Catches</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    with tab2:
+        for p in mn_team + mn_backup:
+            b = get_breakdown(p)
+            st.markdown(f"""
+            <div class="score-breakdown-card">
+                <b style="color:#137333;">{p}</b> — <b>{b['total']} Pts Total</b><br>
+                <span style="font-size:12px; color:#555;">🏏 {b['runs']} Runs | 🎯 {b['wickets']} Wickets | 🤲 {b['catches']} Catches</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # 3x3 Grid Visual Card Layout
+    st.markdown("---")
+    st.markdown("### 📊 Head-to-Head Visual Card")
     loops = max(len(ms_team), len(mn_team))
     for i in range(loops):
         p_ms = ms_team[i] if i < len(ms_team) else "---"
         p_mn = mn_team[i] if i < len(mn_team) else "---"
-        
-        score_ms = calculate_player_score(p_ms)
-        score_mn = calculate_player_score(p_mn)
-        
-        slot_num = (i // 2) + 1
-        sub_slot = (i % 2) + 1
-        
         st.markdown(f"""
-        <div class="grid-container">
-            <div class="team-blue-card" style="text-align: left;">{p_ms}<br><span style='font-size:11px; opacity:0.7;'>({score_ms} pts)</span></div>
-            <div class="vs-badge">PAIR {slot_num}.{sub_slot}</div>
-            <div class="team-green-card" style="text-align: right;">{p_mn}<br><span style='font-size:11px; opacity:0.7;'>({score_mn} pts)</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    # Extra Backups row display
-    if ms_backup or mn_backup:
-        b_ms = ms_backup[0] if ms_backup else "---"
-        b_mn = mn_backup[0] if mn_backup else "---"
-        st.markdown(f"""
-        <div class="grid-container" style="background: rgba(231, 76, 60, 0.15); border: 1px dashed #e74c3c;">
-            <div class="team-blue-card" style="text-align: left; font-style: italic;">{b_ms}<br><span style='font-size:11px;'>({calculate_player_score(b_ms)} pts)</span></div>
-            <div class="vs-badge" style="background:#7f8c8d;">EXTRA</div>
-            <div class="team-green-card" style="text-align: right; font-style: italic;">{b_mn}<br><span style='font-size:11px;'>({calculate_player_score(b_mn)} pts)</span></div>
+        <div class="grid-container" style="background:#222;">
+            <div class="team-blue-card" style="text-align: left;">{p_ms}<br><span style='font-size:11px; opacity:0.7;'>({get_breakdown(p_ms)['total']} pts)</span></div>
+            <div class="vs-badge">PAIR {(i//2)+1}.{(i%2)+1}</div>
+            <div class="team-green-card" style="text-align: right;">{p_mn}<br><span style='font-size:11px; opacity:0.7;'>({get_breakdown(p_mn)['total']} pts)</span></div>
         </div>
         """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# ACTIVE DRAFT PHASE (STEPS 1-7)
+# ACTIVE DRAFT PHASE WITH CUSTOM PLAYER BYPASS
 # -------------------------------------------------------------
 else:
     st.subheader(f"Draft Progress: Step {current_step} / 7")
+    
+    # 🚨 NEW EMERGENCY OVERRIDE OPTION FOR MISSING PLAYERS
+    with st.expander("➕ Can't find a player? Add them manually here"):
+        new_player_name = st.text_input("Type Missing Player Name:")
+        if st.button("Inject Player into Live Roster Pool"):
+            if new_player_name.strip() and new_player_name not in shared_state["custom_players"]:
+                shared_state["custom_players"].append(new_player_name.strip())
+                st.success(f"Added {new_player_name}! You can now search them in the select box above.")
+                st.rerun()
 
     if current_step == 1:
         st.info(f"🟢 Turn 1: {t1_name} select 2 Players")
@@ -273,18 +278,14 @@ else:
     elif current_step == 7:
         st.info("📦 Step 7: Optional Extra Backup Selection")
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown(f"**{t1_name} Backup**")
             if not mn_backup:
                 b1 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b1_sel")
                 if st.button("Confirm Team 1 Backup", key="b1_btn") and b1 != "None":
                     mn_backup.append(b1)
                     st.rerun()
             else: st.write(f"Locked: {mn_backup[0]}")
-
         with col2:
-            st.markdown(f"**{t2_name} Backup**")
             if not ms_backup:
                 b2 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b2_sel")
                 if st.button("Confirm Team 2 Backup", key="b2_btn") and b2 != "None":
@@ -298,11 +299,6 @@ else:
             st.rerun()
 
 st.markdown("---")
-ms_core = ", ".join(ms_team) if ms_team else "None"
-mn_core = ", ".join(mn_team) if mn_team else "None"
-st.markdown(f"**🔵 Mukesh Sir Live List:** {ms_core}")
-st.markdown(f"**🟢 Midha & Negi Live List:** {mn_core}")
-
 if st.button("🚨 Wipe Board & Start New Draft", key="reset_board_final", use_container_width=True):
     shared_state["draft_step"] = 1
     shared_state["ms_team"].clear()
@@ -310,4 +306,5 @@ if st.button("🚨 Wipe Board & Start New Draft", key="reset_board_final", use_c
     shared_state["ms_backup"].clear()
     shared_state["mn_backup"].clear()
     shared_state["player_stats"].clear()
+    shared_state["custom_players"].clear()
     st.rerun()
