@@ -12,70 +12,59 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# LIVE SYNC HUB
+# INDEPENDENT MULTI-MATCH LIVE SYNC
 # -------------------------------------------------------------
-SYNC_API = "https://kv.rest/v1/matrix-draft-saurabh-mukesh-2026"
+# Base cloud URL. We append the match name to isolate the drafts!
+SYNC_BASE_URL = "https://kv.rest/v1/matrix-2026-"
 
-def load_live_state():
+def get_match_slug(match_name):
+    return match_name.lower().replace(" ", "").replace("(", "").replace(")", "").replace("-", "")
+
+def load_live_state(match_name):
+    slug = get_match_slug(match_name)
     try:
-        r = requests.get(SYNC_API, timeout=5)
+        r = requests.get(SYNC_BASE_URL + slug, timeout=5)
         if r.status_code == 200 and r.text:
             return json.loads(r.text)
     except:
         pass
-    return {"current_match": "GT vs RR", "draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None}
+    return {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None}
 
-def save_live_state(state_dict):
+def save_live_state(match_name, state_dict):
+    slug = get_match_slug(match_name)
     try:
-        requests.post(SYNC_API, data=json.dumps(state_dict), timeout=5)
+        requests.post(SYNC_BASE_URL + slug, data=json.dumps(state_dict), timeout=5)
     except:
         pass
 
-shared_state = load_live_state()
-
-# OFFICIAL INTERNET SQUAD DATABASE FOR ALL POTENTIAL MATCH OPTIONS
+# -------------------------------------------------------------
+# ACTUAL SCHEDULED MATCHES SQUAD DATABASE (IPL 2026 PLAYOFFS)
+# -------------------------------------------------------------
 ROSTERS = {
-    "GT vs RR (Qualifier 2)": [
-        "Vaibhav Sooryavanshi", "Yashasvi Jaiswal", "Sanju Samson", "Riyan Parag", 
-        "Dhruv Jurel", "Ravindra Jadeja", "Jofra Archer", "Shimron Hetmyer", 
-        "Rovman Powell", "Ravichandran Ashwin", "Trent Boult", "Avesh Khan", 
-        "Sandeep Sharma", "Yuzvendra Chahal", "Donovan Ferreira", "Shubman Gill", 
-        "Sai Sudharsan", "Jos Buttler", "Rashid Khan", "Mohammed Siraj", 
-        "Kagiso Rabada", "Rahul Tewatia", "Shahrukh Khan", "David Miller", 
-        "Vijay Shankar", "Mohit Sharma", "Noor Ahmad", "Spencer Johnson"
+    "KKR vs SRH (Qualifier 2)": [
+        "Sunil Narine", "Rahmanullah Gurbaz", "Venkatesh Iyer", "Shreyas Iyer", 
+        "Nitish Rana", "Andre Russell", "Rinku Singh", "Ramandeep Singh", 
+        "Mitchell Starc", "Vaibhav Arora", "Harshit Rana", "Varun Chakravarthy",
+        "Travis Head", "Abhishek Sharma", "Rahul Tripathi", "Aiden Markram", 
+        "Heinrich Klaasen", "Nitish Kumar Reddy", "Abdul Samad", "Shahbaz Ahmed", 
+        "Pat Cummins", "Jaydev Unadkat", "Bhuvneshwar Kumar", "T Natarajan"
     ],
-    "RCB vs KKR (Eliminator)": [
+    "RCB vs TBD (The Grand Final)": [
         "Virat Kohli", "Faf du Plessis", "Rajat Patidar", "Glenn Maxwell", 
-        "Cameron Green", "Dinesh Karthik", "Mohammed Siraj", "Yuzvendra Chahal",
-        "Sunil Narine", "Phil Salt", "Venkatesh Iyer", "Shreyas Iyer", 
-        "Rinku Singh", "Andre Russell", "Mitchell Starc", "Harshit Rana",
-        "Varun Chakravarthy", "Anuj Rawat", "Mahipal Lomror", "Karn Sharma"
-    ],
-    "SRH vs MI (Regular / Tie-Breaker)": [
-        "Travis Head", "Abhishek Sharma", "Heinrich Klaasen", "Pat Cummins", 
-        "Nitish Kumar Reddy", "Shahbaz Ahmed", "T Natarajan", "Bhuvneshwar Kumar",
-        "Rohit Sharma", "Ishan Kishan", "Suryakumar Yadav", "Tilak Varma", 
-        "Hardik Pandya", "Tim David", "Jasprit Bumrah", "Gerald Coetzee"
+        "Cameron Green", "Dinesh Karthik", "Mahipal Lomror", "Karn Sharma",
+        "Mohammed Siraj", "Yuzvendra Chahal", "Lockie Ferguson", "Yash Dayal",
+        "Sunil Narine", "Travis Head", "Heinrich Klaasen", "Andre Russell",
+        "Venkatesh Iyer", "Shreyas Iyer", "Pat Cummins", "Abhishek Sharma"
     ]
 }
 
 st.title("🏏 Match Matrix Engine")
 
-# 1. MATCH SELECTION DROPDOWN
-# This reads from the database and lets you pick exactly 1 target match to play
-selected_match = st.selectbox("🎯 Select Active Match to Play:", list(ROSTERS.keys()))
+# 1. Select from actual upcoming schedule
+selected_match = st.selectbox("🎯 Choose Active Schedule:", list(ROSTERS.keys()))
 
-# If you switch matches on your screen, it updates the cloud so Mukesh Sir's screen switches too
-if selected_match != shared_state.get("current_match", "GT vs RR (Qualifier 2)"):
-    shared_state["current_match"] = selected_match
-    # Reset draft state safely for the newly selected match
-    shared_state["draft_step"] = 1
-    shared_state["ms_team"] = []
-    shared_state["mn_team"] = []
-    save_live_state(shared_state)
-    st.rerun()
-
-full_pool = ROSTERS[selected_match]
+# Load the separate cloud slot assigned purely for this specific match
+shared_state = load_live_state(selected_match)
 
 prev_winner = st.selectbox("Who won the previous match?", ["Midha & Negi", "Mukesh Sir"])
 t1_name = "Midha & Negi" if prev_winner == "Midha & Negi" else "Mukesh Sir"
@@ -86,6 +75,8 @@ if st.button("🔄 Tap to Refresh Board Choices"):
 
 current_step = shared_state["draft_step"]
 
+# Drop picked selections cleanly from the current active pool
+full_pool = ROSTERS[selected_match]
 unavailable = shared_state["ms_team"] + shared_state["mn_team"]
 current_pool = [p for p in full_pool if p not in unavailable]
 
@@ -100,7 +91,7 @@ if current_step == 1:
         else:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 2
-        save_live_state(shared_state)
+        save_live_state(selected_match, shared_state)
         st.success("Sent! Tell your partner to refresh.")
         st.rerun()
 
@@ -113,7 +104,7 @@ elif current_step == 2:
         else:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 3
-        save_live_state(shared_state)
+        save_live_state(selected_match, shared_state)
         st.success("Sent! Tell your partner to refresh.")
         st.rerun()
 
@@ -126,7 +117,7 @@ elif current_step == 3:
         else:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 4
-        save_live_state(shared_state)
+        save_live_state(selected_match, shared_state)
         st.success("Sent! Tell your partner to refresh.")
         st.rerun()
 
@@ -139,7 +130,7 @@ elif current_step == 4:
         else:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 5
-        save_live_state(shared_state)
+        save_live_state(selected_match, shared_state)
         st.success("Draft finished successfully!")
         st.rerun()
 
@@ -151,11 +142,11 @@ st.markdown("---")
 ms_display = ", ".join(shared_state["ms_team"]) if shared_state["ms_team"] else "None"
 mn_display = ", ".join(shared_state["mn_team"]) if shared_state["mn_team"] else "None"
 
-st.markdown(f"**Game Loaded:** {shared_state.get('current_match')}")
+st.markdown(f"**Selected Room:** {selected_match}")
 st.markdown(f"**🔵 Mukesh Sir:** {ms_display}")
 st.markdown(f"**🟢 Midha & Negi:** {mn_display}")
 
-if st.button("🚨 Reset Draft System"):
-    reset_dict = {"current_match": selected_match, "draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None}
-    save_live_state(reset_dict)
+if st.button("🚨 Reset This Draft Room"):
+    reset_dict = {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None}
+    save_live_state(selected_match, reset_dict)
     st.rerun()
