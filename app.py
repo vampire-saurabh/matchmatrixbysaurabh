@@ -1,9 +1,8 @@
 import streamlit as st
-import datetime
 
 st.set_page_config(page_title="Match Matrix", page_icon="🏏", layout="centered")
 
-# Force narrow mobile layout for perfect single-screen screenshots
+# Tight column width to match mobile screenshot size perfectly
 st.markdown("""
     <style>
     .block-container { max-width: 380px; padding: 0.5rem; }
@@ -11,7 +10,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 1. COMPREHENSIVE PLAYER POOLS
 ROSTERS = {
     "GT vs RR (Qualifier 2)": [
         "Shubman Gill", "Sai Sudharsan", "Jos Buttler", "Vaibhav Sooryavanshi", 
@@ -19,7 +17,7 @@ ROSTERS = {
         "Krunal Pandya", "Rashid Khan", "Kagiso Rabada", "Jason Holder", 
         "Mohammed Siraj", "Jofra Archer", "Ravindra Jadeja", "Rahul Tewatia",
         "Tilak Varma", "Suryakumar Yadav", "Rohit Sharma", "Donovan Ferreira", 
-        "Naman Dhir", "Will Jacks", "Ryan Rickelton", "Abhishek Sharma", "Travis Head"
+        "Naman Dhir", "Will Jacks", "Ryan Rickelton"
     ],
     "RCB vs TBD (Final)": [
         "Virat Kohli", "Rajat Patidar", "Glenn Maxwell", "Dinesh Karthik", 
@@ -28,20 +26,7 @@ ROSTERS = {
     ]
 }
 
-# Historical and active scorecard simulation database
-SCORE_DATA = {
-    "GT vs RR (Qualifier 2)": {
-        "status": "Live",  # Change to "Finished" to unlock the card generation
-        "scores": {
-            "Yashasvi Jaiswal": {"R": 45, "W": 0}, "Vaibhav Sooryavanshi": {"R": 20, "W": 1}
-            # Rest of live inputs fill here automatically post-match
-        }
-    }
-}
-
-st.title("🏏 Match Matrix Engine")
-
-# Maintain session state cleanly across turns
+# Track session step values
 if "draft_step" not in st.session_state: st.session_state.draft_step = 1
 if "ms_team" not in st.session_state: st.session_state.ms_team = []
 if "mn_team" not in st.session_state: st.session_state.mn_team = []
@@ -51,74 +36,66 @@ if "backup_first" not in st.session_state: st.session_state.backup_first = None
 
 mode = st.radio("Navigation:", ["Draft Room", "View Final Card"], horizontal=True)
 
-# ---------------------------------------------------------
-# RULE 2 & 3: TURN-BASED DRAFT IN PAIRS & BACKUPS
-# ---------------------------------------------------------
 if mode == "Draft Room":
     match_select = st.selectbox("Select Target Match:", list(ROSTERS.keys()))
     full_pool = ROSTERS[match_select]
     
-    # Check who goes first based on previous day's results
+    # Define who goes first based on last match winner
     prev_winner = st.selectbox("Who won the previous match?", ["Midha & Negi", "Mukesh Sir"])
-    first_picker = "MN" if prev_winner == "Midha & Negi" else "MS"
-    second_picker = "MS" if first_picker == "MN" else "MN"
+    t1_name = "Midha & Negi" if prev_winner == "Midha & Negi" else "Mukesh Sir"
+    t2_name = "Mukesh Sir" if t1_name == "Midha & Negi" else "Midha & Negi"
+    
+    # Map steps to active picking roles
+    step_mapping = {
+        1: {"team_key": "T1", "label": f"🟢 Round 1: {t1_name} (Pick 2)"},
+        2: {"team_key": "T2", "label": f"🔵 Round 2: {t2_name} (Pick 2)"},
+        3: {"team_key": "T1", "label": f"🟢 Round 3: {t1_name} (Pick 2)"},
+        4: {"team_key": "T2", "label": f"🔵 Round 4: {t2_name} (Pick 2)"},
+        5: {"team_key": "T1", "label": f"🟢 Round 5: {t1_name} (Pick 2)"},
+        6: {"team_key": "T2", "label": f"🔵 Round 6: {t2_name} (Pick 2)"}
+    }
 
-    # Filter out already drafted players
     unavailable = st.session_state.ms_team + st.session_state.mn_team
     current_pool = [p for p in full_pool if p not in unavailable]
 
-    st.write(f"**Current Draft Step:** {st.session_state.draft_step} / 4")
-    
-    # Round 1: First picker drafts Pair 1
-    if st.session_state.draft_step == 1:
-        st.info(f"🔵 Turn 1: {prev_winner} select your FIRST PAIR (2 Players)")
-        pair1 = st.multiselect("Pick 2 Players:", current_pool, max_selections=2)
-        if st.button("Confirm Pair 1") and len(pair1) == 2:
-            if first_picker == "MN": st.session_state.mn_team.extend(pair1)
-            else: st.session_state.ms_team.extend(pair1)
-            st.session_state.draft_step = 2
-            st.rerun()
-
-    # Round 2: Second picker drafts Pair 1 & Pair 2 (4 players consecutive blocks)
-    elif st.session_state.draft_step == 2:
-        other_name = "Mukesh Sir" if first_picker == "MN" else "Midha & Negi"
-        st.info(f"🟢 Turn 2: {other_name} select your NEXT 4 Players (Pairs 1 & 2)")
-        block = st.multiselect("Pick 4 Players:", current_pool, max_selections=4)
-        if st.button("Confirm 4 Players") and len(block) == 4:
-            if second_picker == "MN": st.session_state.mn_team.extend(block)
-            else: st.session_state.ms_team.extend(block)
-            st.session_state.draft_step = 3
-            st.rerun()
-
-    # Round 3: First picker finishes final pair
-    elif st.session_state.draft_step == 3:
-        st.info(f"🔵 Turn 3: {prev_winner} select your FINAL PAIR (2 Players)")
-        pair2 = st.multiselect("Pick 2 Players:", current_pool, max_selections=2)
-        if st.button("Confirm Final Pair") and len(pair2) == 2:
-            if first_picker == "MN": st.session_state.mn_team.extend(pair2)
-            else: st.session_state.ms_team.extend(pair2)
-            st.session_state.draft_step = 4
-            st.rerun()
-
-    # Round 4: Extra 7th Backup Player Selection (Can overlap, priority tracked)
-    elif st.session_state.draft_step == 4:
-        st.warning("⚠️ Final Stage: Select your optional 7th Backup Player.")
+    if st.session_state.draft_step <= 6:
+        current_step = step_mapping[st.session_state.draft_step]
+        st.info(current_step["label"])
         
+        selected_pair = st.multiselect("Select exactly 2 players:", current_pool, max_selections=2)
+        
+        if st.button(f"Confirm Selection") and len(selected_pair) == 2:
+            # Route choices to the correct structural arrays
+            active_team = t1_name if current_step["team_key"] == "T1" else t2_name
+            if active_team == "Midha & Negi":
+                st.session_state.mn_team.extend(selected_pair)
+            else:
+                st.session_state.ms_team.extend(selected_pair)
+                
+            st.session_state.draft_step += 1
+            st.rerun()
+
+    # Step 7: The Backup Stage
+    elif st.session_state.draft_step == 7:
+        st.warning("⚠️ Final Stage: Select your optional 7th Extra/Backup Player.")
         ms_b = st.selectbox("Mukesh Sir Backup:", [None] + full_pool)
         mn_b = st.selectbox("Midha & Negi Backup:", [None] + full_pool)
-        
-        order = st.radio("Who selected their backup first over chat?", ["Midha & Negi", "Mukesh Sir"])
+        order = st.radio("Who selected their backup first?", ["Midha & Negi", "Mukesh Sir"])
         
         if st.button("🔒 Lock & Save Full Roster"):
             st.session_state.ms_backup = ms_b
             st.session_state.mn_backup = mn_b
             st.session_state.backup_first = "MN" if order == "Midha & Negi" else "MS"
-            st.success("Rosters compiled securely!")
+            st.success("Draft complete! Go to 'View Final Card' tab once match finishes.")
 
-    # Display real-time draft overview
+    # Live roster overview tracker beneath the picker fields
     st.markdown("---")
-    st.markdown(f"**🔵 Mukesh Sir:** {', '.join(st.session_state.ms_team)} *(Backup: {st.session_state.ms_backup})*")
-    st.markdown(f"**🟢 Midha & Negi:** {', '.join(st.session_state.mn_team)} *(Backup: {st.session_state.mn_backup})*")
+    st.write(f"**Draft Progress:** Step {st.session_state.draft_step if st.session_state.draft_step <= 7 else 7} / 7")
+    st.markdown(f"**🔵 Mukesh Sir ({len(st.session_state.ms_team)}/6):** {', '.join(st.session_state.ms_team)}")
+    if st.session_state.ms_backup: st.write(f"*(Backup: {st.session_state.ms_backup})*")
+    
+    st.markdown(f"**🟢 Midha & Negi ({len(st.session_state.mn_team)}/6):** {', '.join(st.session_state.mn_team)}")
+    if st.session_state.mn_backup: st.write(f"*(Backup: {st.session_state.mn_backup})*")
     
     if st.button("🔄 Reset Draft System"):
         st.session_state.draft_step = 1
@@ -126,15 +103,6 @@ if mode == "Draft Room":
         st.session_state.ms_backup, st.session_state.mn_backup = None, None
         st.rerun()
 
-# ---------------------------------------------------------
-# RULE 4: TIME-LOCKED CARD PRODUCTION
-# ---------------------------------------------------------
 else:
-    match_card = st.selectbox("Choose Scorecard Match:", list(SCORE_DATA.keys()))
-    match_status = SCORE_DATA[match_card]["status"]
-    
-    if match_status != "Finished":
-        st.error("🔒 Result Card Hidden: This match is still live or in draft phase. Payout cards publish automatically once match results are finalized.")
-    else:
-        st.success("📊 Match Finalized! Card generated below:")
-        # (The clean printing function processing runs*10 and wkts*100 runs down here seamlessly)
+    # Keeps scorecards hidden during active gameplay as requested
+    st.error("🔒 Result Card Hidden: Payout cards can only be published once the match is finalized.")
