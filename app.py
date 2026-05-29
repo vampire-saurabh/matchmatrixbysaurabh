@@ -1,6 +1,5 @@
 import streamlit as st
 import json
-import requests
 import random
 
 st.set_page_config(page_title="Match Matrix Engine", page_icon="🏏", layout="centered")
@@ -13,29 +12,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# REAL-TIME FIREBASE STORAGE SYNC (HIGH AVAILABILITY MOBILE LAYER)
+# OFFICIAL STREAMLIT CLOUD RUNTIME MEMORY DISPATCHER
 # -------------------------------------------------------------
-# This is a pre-configured, instantly active, dedicated database instance for your app
-DB_URL = "https://match-matrix-2026-default-rtdb.firebaseio.com/draft_state.json"
+@st.cache_resource(ttl=3)
+def get_global_server_memory():
+    # This creates a shared data object directly inside the main server process
+    if "global_matrix_store" not in st.experimental_singleton:
+        st.experimental_singleton["global_matrix_store"] = {
+            "draft_step": 1, 
+            "ms_team": [], 
+            "mn_team": [], 
+            "ms_backup": [], 
+            "mn_backup": []
+        }
+    return st.experimental_singleton["global_matrix_store"]
 
-def load_live_state():
-    try:
-        # Cache-busting parameter prevents mobile safari/chrome from loading stale states
-        r = requests.get(f"{DB_URL}?cb={random.randint(1, 999999)}", timeout=5)
-        if r.status_code == 200 and r.json() is not None:
-            return r.json()
-    except:
-        pass
-    return {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": [], "mn_backup": []}
-
-def save_live_state(state_dict):
-    try:
-        requests.put(DB_URL, json=state_dict, timeout=5)
-    except:
-        pass
+# Pull the shared cloud state
+shared_state = get_global_server_memory()
 
 # -------------------------------------------------------------
-# FIXTURE ROSTERS DATA
+# FIXED DATA SCHEDULING
 # -------------------------------------------------------------
 ROSTERS = {
     "GT vs RR (Qualifier 2)": [
@@ -64,9 +60,6 @@ selected_match = st.selectbox(
     key="match_selector"
 )
 
-# Pull global live state directly from the firebase server layer
-shared_state = load_live_state()
-
 prev_winner = st.selectbox("Who won the previous match?", ["Midha & Negi", "Mukesh Sir"], key="winner_selector")
 t1_name = "Midha & Negi" if prev_winner == "Midha & Negi" else "Mukesh Sir"
 t2_name = "Mukesh Sir" if t1_name == "Midha & Negi" else "Midha & Negi"
@@ -74,17 +67,11 @@ t2_name = "Mukesh Sir" if t1_name == "Midha & Negi" else "Midha & Negi"
 if st.button("🔄 Tap to Refresh Board Choices", key="global_refresh_btn"):
     st.rerun()
 
-current_step = shared_state.get("draft_step", 1)
-ms_team = shared_state.get("ms_team", [])
-mn_team = shared_state.get("mn_team", [])
-ms_backup = shared_state.get("ms_backup", [])
-mn_backup = shared_state.get("mn_backup", [])
-
-# Handle empty list conversions from data fetching normalization
-if ms_team is None: ms_team = []
-if mn_team is None: mn_team = []
-if ms_backup is None: ms_backup = []
-if mn_backup is None: mn_backup = []
+current_step = shared_state["draft_step"]
+ms_team = shared_state["ms_team"]
+mn_team = shared_state["mn_team"]
+ms_backup = shared_state["ms_backup"]
+mn_backup = shared_state["mn_backup"]
 
 full_pool = ROSTERS[selected_match]
 unavailable = ms_team + mn_team + ms_backup + mn_backup
@@ -93,7 +80,7 @@ current_pool = [p for p in full_pool if p not in unavailable]
 st.subheader(f"Draft Progress: Step {current_step} / 7")
 
 # -------------------------------------------------------------
-# DRAFT PIPELINE (2 PLAYERS EACH DISCRETE STEPPERS)
+# DRAFT SEQUENCER
 # -------------------------------------------------------------
 if current_step == 1:
     st.info(f"🟢 Turn 1: {t1_name} select 2 Players")
@@ -102,10 +89,7 @@ if current_step == 1:
         if len(selected) == 2:
             if t1_name == "Midha & Negi": mn_team.extend(selected)
             else: ms_team.extend(selected)
-            shared_state["mn_team"] = mn_team
-            shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 2
-            save_live_state(shared_state)
             st.success("Locked! Tell Mukesh Sir to hit refresh.")
             st.rerun()
         else:
@@ -118,11 +102,8 @@ elif current_step == 2:
         if len(selected) == 2:
             if t2_name == "Midha & Negi": mn_team.extend(selected)
             else: ms_team.extend(selected)
-            shared_state["mn_team"] = mn_team
-            shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 3
-            save_live_state(shared_state)
-            st.success("Locked! Turn 3 open.")
+            st.success("Locked! Ready for Step 3.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -134,11 +115,8 @@ elif current_step == 3:
         if len(selected) == 2:
             if t1_name == "Midha & Negi": mn_team.extend(selected)
             else: ms_team.extend(selected)
-            shared_state["mn_team"] = mn_team
-            shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 4
-            save_live_state(shared_state)
-            st.success("Locked! Turn 4 open.")
+            st.success("Locked! Ready for Step 4.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -150,11 +128,8 @@ elif current_step == 4:
         if len(selected) == 2:
             if t2_name == "Midha & Negi": mn_team.extend(selected)
             else: ms_team.extend(selected)
-            shared_state["mn_team"] = mn_team
-            shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 5
-            save_live_state(shared_state)
-            st.success("Locked! Turn 5 open.")
+            st.success("Locked! Ready for Step 5.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -166,11 +141,8 @@ elif current_step == 5:
         if len(selected) == 2:
             if t1_name == "Midha & Negi": mn_team.extend(selected)
             else: ms_team.extend(selected)
-            shared_state["mn_team"] = mn_team
-            shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 6
-            save_live_state(shared_state)
-            st.success("Locked! Turn 6 open.")
+            st.success("Locked! Ready for Step 6.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -182,46 +154,40 @@ elif current_step == 6:
         if len(selected) == 2:
             if t2_name == "Midha & Negi": mn_team.extend(selected)
             else: ms_team.extend(selected)
-            shared_state["mn_team"] = mn_team
-            shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 7
-            save_live_state(shared_state)
-            st.success("All core players verified! Moving to optional extras.")
+            st.success("Core picks finished! Moving to backups.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
 
 elif current_step == 7:
-    st.info("📦 Step 7: Optional Extra Backup Player Selection")
+    st.info("📦 Step 7: Optional Extra Backup Selection")
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown(f"**{t1_name} Backup**")
-        if not (mn_backup if t1_name == "Midha & Negi" else ms_backup):
+        if not mn_backup if t1_name == "Midha & Negi" else not ms_backup:
             b1 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b1_sel")
             if st.button("Confirm Team 1 Backup", key="b1_btn") and b1 != "None":
-                if t1_name == "Midha & Negi": shared_state["mn_backup"] = [b1]
-                else: shared_state["ms_backup"] = [b1]
-                save_live_state(shared_state)
+                if t1_name == "Midha & Negi": shared_state["mn_backup"].append(b1)
+                else: shared_state["ms_backup"].append(b1)
                 st.rerun()
         else:
             st.write(f"Locked: {mn_backup[0] if t1_name == 'Midha & Negi' else ms_backup[0]}")
 
     with col2:
         st.markdown(f"**{t2_name} Backup**")
-        if not (ms_backup if t2_name == "Mukesh Sir" else mn_backup):
+        if not ms_backup if t2_name == "Mukesh Sir" else not mn_backup:
             b2 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b2_sel")
             if st.button("Confirm Team 2 Backup", key="b2_btn") and b2 != "None":
-                if t2_name == "Midha & Negi": shared_state["mn_backup"] = [b2]
-                else: shared_state["ms_backup"] = [b2]
-                save_live_state(shared_state)
+                if t2_name == "Midha & Negi": shared_state["mn_backup"].append(b2)
+                else: shared_state["ms_backup"].append(b2)
                 st.rerun()
         else:
             st.write(f"Locked: {ms_backup[0] if t2_name == 'Mukesh Sir' else mn_backup[0]}")
 
     if st.button("🏁 Finish and Lock Draft Entirely", key="final_lock_btn"):
         shared_state["draft_step"] = 8
-        save_live_state(shared_state)
         st.rerun()
 
 else:
@@ -238,6 +204,9 @@ st.markdown(f"**🔵 Mukesh Sir Core Squad:** {ms_core}{ms_b_str}")
 st.markdown(f"**🟢 Midha & Negi Core Squad:** {mn_core}{mn_b_str}")
 
 if st.button("🚨 Wipe Board & Start New Draft", key="reset_board_final"):
-    reset_dict = {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": [], "mn_backup": []}
-    save_live_state(reset_dict)
+    shared_state["draft_step"] = 1
+    shared_state["ms_team"] = []
+    shared_state["mn_team"] = []
+    shared_state["ms_backup"] = []
+    shared_state["mn_backup"] = []
     st.rerun()
