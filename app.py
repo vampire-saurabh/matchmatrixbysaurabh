@@ -12,26 +12,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# OFFICIAL STREAMLIT CLOUD RUNTIME MEMORY DISPATCHER
+# HIGH-SPEED SERVER CORESYNC (Bypasses Outdated Singletons)
 # -------------------------------------------------------------
-@st.cache_resource(ttl=3)
-def get_global_server_memory():
-    # This creates a shared data object directly inside the main server process
-    if "global_matrix_store" not in st.experimental_singleton:
-        st.experimental_singleton["global_matrix_store"] = {
-            "draft_step": 1, 
-            "ms_team": [], 
-            "mn_team": [], 
-            "ms_backup": [], 
-            "mn_backup": []
-        }
-    return st.experimental_singleton["global_matrix_store"]
+@st.cache_resource
+def get_shared_server_state():
+    # This creates a shared data cache directly inside the main live server process
+    return {
+        "draft_step": 1, 
+        "ms_team": [], 
+        "mn_team": [], 
+        "ms_backup": [], 
+        "mn_backup": []
+    }
 
-# Pull the shared cloud state
-shared_state = get_global_server_memory()
+# Connect straight to the shared server state dictionary
+shared_state = get_shared_server_state()
 
 # -------------------------------------------------------------
-# FIXED DATA SCHEDULING
+# MATCH DAY FIXTURE SQUADS
 # -------------------------------------------------------------
 ROSTERS = {
     "GT vs RR (Qualifier 2)": [
@@ -80,7 +78,7 @@ current_pool = [p for p in full_pool if p not in unavailable]
 st.subheader(f"Draft Progress: Step {current_step} / 7")
 
 # -------------------------------------------------------------
-# DRAFT SEQUENCER
+# DRAFT SEQUENCER ENGINE (2 PLAYERS EACH DISCRETE ROUNDS)
 # -------------------------------------------------------------
 if current_step == 1:
     st.info(f"🟢 Turn 1: {t1_name} select 2 Players")
@@ -166,25 +164,23 @@ elif current_step == 7:
     
     with col1:
         st.markdown(f"**{t1_name} Backup**")
-        if not mn_backup if t1_name == "Midha & Negi" else not ms_backup:
+        if not mn_backup:
             b1 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b1_sel")
             if st.button("Confirm Team 1 Backup", key="b1_btn") and b1 != "None":
-                if t1_name == "Midha & Negi": shared_state["mn_backup"].append(b1)
-                else: shared_state["ms_backup"].append(b1)
+                mn_backup.append(b1)
                 st.rerun()
         else:
-            st.write(f"Locked: {mn_backup[0] if t1_name == 'Midha & Negi' else ms_backup[0]}")
+            st.write(f"Locked: {mn_backup[0]}")
 
     with col2:
         st.markdown(f"**{t2_name} Backup**")
-        if not ms_backup if t2_name == "Mukesh Sir" else not mn_backup:
+        if not ms_backup:
             b2 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b2_sel")
             if st.button("Confirm Team 2 Backup", key="b2_btn") and b2 != "None":
-                if t2_name == "Midha & Negi": shared_state["mn_backup"].append(b2)
-                else: shared_state["ms_backup"].append(b2)
+                ms_backup.append(b2)
                 st.rerun()
         else:
-            st.write(f"Locked: {ms_backup[0] if t2_name == 'Mukesh Sir' else mn_backup[0]}")
+            st.write(f"Locked: {ms_backup[0]}")
 
     if st.button("🏁 Finish and Lock Draft Entirely", key="final_lock_btn"):
         shared_state["draft_step"] = 8
@@ -205,8 +201,8 @@ st.markdown(f"**🟢 Midha & Negi Core Squad:** {mn_core}{mn_b_str}")
 
 if st.button("🚨 Wipe Board & Start New Draft", key="reset_board_final"):
     shared_state["draft_step"] = 1
-    shared_state["ms_team"] = []
-    shared_state["mn_team"] = []
-    shared_state["ms_backup"] = []
-    shared_state["mn_backup"] = []
+    shared_state["ms_team"].clear()
+    shared_state["mn_team"].clear()
+    shared_state["ms_backup"].clear()
+    shared_state["mn_backup"].clear()
     st.rerun()
