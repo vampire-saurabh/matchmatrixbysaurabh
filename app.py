@@ -1,10 +1,9 @@
 import streamlit as st
+from google.cloud import firestore
 import json
-import requests
 
 st.set_page_config(page_title="Match Matrix", page_icon="🏏", layout="centered")
 
-# Tight column width to match mobile screenshot size perfectly
 st.markdown("""
     <style>
     .block-container { max-width: 380px; padding: 0.5rem; }
@@ -12,9 +11,25 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Free open data hub to sync your two phones instantly
-# This unique URL acts as the invisible live database connecting you both
-SYNC_URL = "https://kv.rest/v1/matrix-draft-saurabh-mukesh-2026"
+# Connect to Streamlit's official secure cloud database
+try:
+    db = firestore.Client.from_service_account_info(st.secrets["textkey"])
+except Exception as e:
+    st.error("🔒 Database connection pending. Please configure your Streamlit Secrets.")
+    st.stop()
+
+doc_ref = db.collection("drafts").document("live_board")
+
+def load_cloud_data():
+    doc = doc_ref.get()
+    if doc.exists:
+        return doc.to_dict()
+    return {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None, "backup_first": None}
+
+def save_cloud_data(data):
+    doc_ref.set(data)
+
+cloud_state = load_cloud_data()
 
 ROSTERS = {
     "GT vs RR (Qualifier 2)": [
@@ -31,23 +46,6 @@ ROSTERS = {
         "Washington Sundar", "Tim David", "Nishant Sindhu", "Devdutt Padikkal"
     ]
 }
-
-# Functions to Pull and Push data between both devices
-def load_cloud_data():
-    try:
-        r = requests.get(SYNC_URL)
-        if r.status_code == 200 and r.text:
-            return json.loads(r.text)
-    except:
-        pass
-    return {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None, "backup_first": None}
-
-def save_cloud_data(data):
-    try: requests.post(SYNC_URL, data=json.dumps(data))
-    except: pass
-
-# Always load the latest live choices from the cloud
-cloud_state = load_cloud_data()
 
 st.title("🏏 Match Matrix Engine")
 
@@ -123,6 +121,5 @@ if mode == "Draft Room":
         reset_data = {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None, "backup_first": None}
         save_cloud_data(reset_data)
         st.rerun()
-
 else:
     st.error("🔒 Result Card Hidden: Payout cards can only be published once the match is finalized.")
