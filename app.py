@@ -12,9 +12,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# INDEPENDENT MULTI-MATCH LIVE SYNC
+# DYNAMIC MATCH SLOT SYNC
 # -------------------------------------------------------------
-# Base cloud URL. We append the match name to isolate the drafts!
 SYNC_BASE_URL = "https://kv.rest/v1/matrix-2026-"
 
 def get_match_slug(match_name):
@@ -38,16 +37,17 @@ def save_live_state(match_name, state_dict):
         pass
 
 # -------------------------------------------------------------
-# ACTUAL SCHEDULED MATCHES SQUAD DATABASE (IPL 2026 PLAYOFFS)
+# ACTUAL SCHEDULED FIXTURES ONLY (IPL 2026 PLAYOFFS)
 # -------------------------------------------------------------
 ROSTERS = {
-    "KKR vs SRH (Qualifier 2)": [
-        "Sunil Narine", "Rahmanullah Gurbaz", "Venkatesh Iyer", "Shreyas Iyer", 
-        "Nitish Rana", "Andre Russell", "Rinku Singh", "Ramandeep Singh", 
-        "Mitchell Starc", "Vaibhav Arora", "Harshit Rana", "Varun Chakravarthy",
-        "Travis Head", "Abhishek Sharma", "Rahul Tripathi", "Aiden Markram", 
-        "Heinrich Klaasen", "Nitish Kumar Reddy", "Abdul Samad", "Shahbaz Ahmed", 
-        "Pat Cummins", "Jaydev Unadkat", "Bhuvneshwar Kumar", "T Natarajan"
+    "GT vs RR (Qualifier 2)": [
+        "Vaibhav Sooryavanshi", "Yashasvi Jaiswal", "Sanju Samson", "Riyan Parag", 
+        "Dhruv Jurel", "Ravindra Jadeja", "Jofra Archer", "Shimron Hetmyer", 
+        "Rovman Powell", "Ravichandran Ashwin", "Trent Boult", "Avesh Khan", 
+        "Sandeep Sharma", "Yuzvendra Chahal", "Donovan Ferreira", "Shubman Gill", 
+        "Sai Sudharsan", "Jos Buttler", "Rashid Khan", "Mohammed Siraj", 
+        "Kagiso Rabada", "Rahul Tewatia", "Shahrukh Khan", "David Miller", 
+        "Vijay Shankar", "Mohit Sharma", "Noor Ahmad", "Spencer Johnson"
     ],
     "RCB vs TBD (The Grand Final)": [
         "Virat Kohli", "Faf du Plessis", "Rajat Patidar", "Glenn Maxwell", 
@@ -60,10 +60,14 @@ ROSTERS = {
 
 st.title("🏏 Match Matrix Engine")
 
-# 1. Select from actual upcoming schedule
-selected_match = st.selectbox("🎯 Choose Active Schedule:", list(ROSTERS.keys()))
+# Explicit "key" assignment forces Streamlit to rebuild the screen state instantly on change
+selected_match = st.selectbox(
+    "🎯 Choose Active Schedule Room:", 
+    list(ROSTERS.keys()), 
+    key="match_selector_root"
+)
 
-# Load the separate cloud slot assigned purely for this specific match
+# Pull the dedicated cloud save file for the chosen match room
 shared_state = load_live_state(selected_match)
 
 prev_winner = st.selectbox("Who won the previous match?", ["Midha & Negi", "Mukesh Sir"])
@@ -75,7 +79,7 @@ if st.button("🔄 Tap to Refresh Board Choices"):
 
 current_step = shared_state["draft_step"]
 
-# Drop picked selections cleanly from the current active pool
+# Safely isolate the pool to prevent leakage between active drafts
 full_pool = ROSTERS[selected_match]
 unavailable = shared_state["ms_team"] + shared_state["mn_team"]
 current_pool = [p for p in full_pool if p not in unavailable]
