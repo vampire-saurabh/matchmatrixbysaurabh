@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import requests
+import random
 
 st.set_page_config(page_title="Match Matrix", page_icon="🏏", layout="centered")
 
@@ -12,7 +13,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# DYNAMIC MATCH SLOT SYNC
+# DYNAMIC MATCH SLOT SYNC WITH CACHE BUSTING
 # -------------------------------------------------------------
 SYNC_BASE_URL = "https://kv.rest/v1/matrix-2026-"
 
@@ -22,7 +23,8 @@ def get_match_slug(match_name):
 def load_live_state(match_name):
     slug = get_match_slug(match_name)
     try:
-        r = requests.get(SYNC_BASE_URL + slug, timeout=5)
+        # Added a random query param to completely force-bypass any device side caching
+        r = requests.get(f"{SYNC_BASE_URL}{slug}?cb={random.randint(1, 100000)}", timeout=5)
         if r.status_code == 200 and r.text:
             return json.loads(r.text)
     except:
@@ -37,7 +39,7 @@ def save_live_state(match_name, state_dict):
         pass
 
 # -------------------------------------------------------------
-# ACTUAL SCHEDULED FIXTURES ONLY (IPL 2026 PLAYOFFS)
+# ACTUAL SCHEDULED PLAYOFF FIXTURES ONLY
 # -------------------------------------------------------------
 ROSTERS = {
     "GT vs RR (Qualifier 2)": [
@@ -60,26 +62,26 @@ ROSTERS = {
 
 st.title("🏏 Match Matrix Engine")
 
-# Explicit "key" assignment forces Streamlit to rebuild the screen state instantly on change
+# This updates instantly across devices when matching rooms are selected
 selected_match = st.selectbox(
     "🎯 Choose Active Schedule Room:", 
     list(ROSTERS.keys()), 
-    key="match_selector_root"
+    key="match_selector"
 )
 
-# Pull the dedicated cloud save file for the chosen match room
+# Pull data specific to this match selection
 shared_state = load_live_state(selected_match)
 
 prev_winner = st.selectbox("Who won the previous match?", ["Midha & Negi", "Mukesh Sir"])
 t1_name = "Midha & Negi" if prev_winner == "Midha & Negi" else "Mukesh Sir"
 t2_name = "Mukesh Sir" if t1_name == "Midha & Negi" else "Midha & Negi"
 
+# Explicitly pulling current step from the internet database state
+current_step = shared_state["draft_step"]
+
 if st.button("🔄 Tap to Refresh Board Choices"):
     st.rerun()
 
-current_step = shared_state["draft_step"]
-
-# Safely isolate the pool to prevent leakage between active drafts
 full_pool = ROSTERS[selected_match]
 unavailable = shared_state["ms_team"] + shared_state["mn_team"]
 current_pool = [p for p in full_pool if p not in unavailable]
@@ -96,7 +98,7 @@ if current_step == 1:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 2
         save_live_state(selected_match, shared_state)
-        st.success("Sent! Tell your partner to refresh.")
+        st.success("Sent! Tell Mukesh Sir to hit refresh.")
         st.rerun()
 
 elif current_step == 2:
@@ -109,7 +111,7 @@ elif current_step == 2:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 3
         save_live_state(selected_match, shared_state)
-        st.success("Sent! Tell your partner to refresh.")
+        st.success("Sent! Picks synchronized.")
         st.rerun()
 
 elif current_step == 3:
@@ -122,7 +124,7 @@ elif current_step == 3:
             shared_state["ms_team"].extend(selected)
         shared_state["draft_step"] = 4
         save_live_state(selected_match, shared_state)
-        st.success("Sent! Tell your partner to refresh.")
+        st.success("Sent! Board tracking updated.")
         st.rerun()
 
 elif current_step == 4:
@@ -146,9 +148,9 @@ st.markdown("---")
 ms_display = ", ".join(shared_state["ms_team"]) if shared_state["ms_team"] else "None"
 mn_display = ", ".join(shared_state["mn_team"]) if shared_state["mn_team"] else "None"
 
-st.markdown(f"**Selected Room:** {selected_match}")
-st.markdown(f"**🔵 Mukesh Sir:** {ms_display}")
-st.markdown(f"**🟢 Midha & Negi:** {mn_display}")
+st.markdown(f"**Current Active Room:** {selected_match}")
+st.markdown(f"**🔵 Mukesh Sir Picks:** {ms_display}")
+st.markdown(f"**🟢 Midha & Negi Picks:** {mn_display}")
 
 if st.button("🚨 Reset This Draft Room"):
     reset_dict = {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": None, "mn_backup": None}
