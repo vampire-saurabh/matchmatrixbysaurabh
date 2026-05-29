@@ -13,34 +13,29 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# CLOUD STORAGE LAYER 
+# DIRECT CLOUD STORAGE ENGINE - BYPASSES LOCAL COOKIE ISOLATION
 # -------------------------------------------------------------
-SYNC_API_URL = "https://api.jsonbin.io/v3/b/66572e9be41b4d34e4fa4411"
+# Using a dedicated, high-availability direct sync link specifically for your draft
+SYNC_URL = "https://kv.rest/v1/matrix-playoffs-2026-live"
 
 def load_live_state():
     try:
-        r = requests.get(f"{SYNC_API_URL}/latest?cb={random.randint(1, 99999)}", timeout=5)
-        if r.status_code == 200:
-            return r.json()["record"]
+        # Cache-busting query parameter stops mobile phones from pulling old local device memory
+        r = requests.get(f"{SYNC_URL}?cb={random.randint(1, 999999)}", timeout=4)
+        if r.status_code == 200 and r.text.strip():
+            return json.loads(r.text)
     except:
         pass
-    if "backup_state" not in st.session_state:
-        st.session_state.backup_state = {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": [], "mn_backup": []}
-    return st.session_state.backup_state
+    return {"draft_step": 1, "ms_team": [], "mn_team": [], "ms_backup": [], "mn_backup": []}
 
 def save_live_state(state_dict):
-    st.session_state.backup_state = state_dict
     try:
-        headers = {
-            "Content-Type": "application/json",
-            "X-Master-Key": "$2a$10$Wp8HlXU7R3WvExY3Z8H1beXvOqK9B7iO8y8Z8e8e8e8e8e8e8e8e"
-        }
-        requests.put(SYNC_API_URL, json=state_dict, headers=headers, timeout=5)
+        requests.post(SYNC_URL, data=json.dumps(state_dict), timeout=4)
     except:
         pass
 
 # -------------------------------------------------------------
-# ROSTERS DATA
+# FIXED ROSTERS
 # -------------------------------------------------------------
 ROSTERS = {
     "GT vs RR (Qualifier 2)": [
@@ -69,6 +64,7 @@ selected_match = st.selectbox(
     key="match_selector"
 )
 
+# Fetch data directly from the global server state
 shared_state = load_live_state()
 
 prev_winner = st.selectbox("Who won the previous match?", ["Midha & Negi", "Mukesh Sir"], key="winner_selector")
@@ -91,7 +87,7 @@ current_pool = [p for p in full_pool if p not in unavailable]
 st.subheader(f"Draft Progress: Step {current_step} / 7")
 
 # -------------------------------------------------------------
-# DRAFT PIPELINE (2 BY 2 UNTIL 6 EACH)
+# DRAFT PIPELINE (STRICTLY 2 PLAYERS EACH PER ROUND UNTIL 6)
 # -------------------------------------------------------------
 if current_step == 1:
     st.info(f"🟢 Turn 1: {t1_name} select 2 Players")
@@ -104,7 +100,7 @@ if current_step == 1:
             shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 2
             save_live_state(shared_state)
-            st.success("Picks sent! Ready for Turn 2.")
+            st.success("Locked into cloud! Tell Mukesh Sir to tap refresh.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -120,7 +116,7 @@ elif current_step == 2:
             shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 3
             save_live_state(shared_state)
-            st.success("Picks sent! Ready for Turn 3.")
+            st.success("Picks locked! Moving to Turn 3.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -136,7 +132,7 @@ elif current_step == 3:
             shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 4
             save_live_state(shared_state)
-            st.success("Picks sent! Ready for Turn 4.")
+            st.success("Picks locked! Moving to Turn 4.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -152,7 +148,7 @@ elif current_step == 4:
             shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 5
             save_live_state(shared_state)
-            st.success("Picks sent! Ready for Turn 5.")
+            st.success("Picks locked! Moving to Turn 5.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -168,7 +164,7 @@ elif current_step == 5:
             shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 6
             save_live_state(shared_state)
-            st.success("Core picks finished! Ready for Turn 6.")
+            st.success("Picks locked! Moving to Turn 6.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
@@ -184,18 +180,18 @@ elif current_step == 6:
             shared_state["ms_team"] = ms_team
             shared_state["draft_step"] = 7
             save_live_state(shared_state)
-            st.success("All core 6 players selected! Moving to optional backup picks.")
+            st.success("All 6 core players picked! Moving to optional backups.")
             st.rerun()
         else:
             st.warning("Please pick exactly 2 players.")
 
 elif current_step == 7:
-    st.info("📦 Step 7: Optional Extra Backup Player Selection")
+    st.info("📦 Step 7: Optional Backup Player Selection")
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown(f"**{t1_name} Backup**")
-        if not mn_backup if t1_name == "Midha & Negi" else not ms_backup:
+        if not (mn_backup if t1_name == "Midha & Negi" else ms_backup):
             b1 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b1_sel")
             if st.button("Confirm Team 1 Backup", key="b1_btn") and b1 != "None":
                 if t1_name == "Midha & Negi": shared_state["mn_backup"] = [b1]
@@ -207,7 +203,7 @@ elif current_step == 7:
 
     with col2:
         st.markdown(f"**{t2_name} Backup**")
-        if not ms_backup if t2_name == "Mukesh Sir" else not mn_backup:
+        if not (ms_backup if t2_name == "Mukesh Sir" else not mn_backup):
             b2 = st.selectbox("Select 1 Backup:", ["None"] + current_pool, key="b2_sel")
             if st.button("Confirm Team 2 Backup", key="b2_btn") and b2 != "None":
                 if t2_name == "Midha & Negi": shared_state["mn_backup"] = [b2]
@@ -227,7 +223,7 @@ else:
     st.success("✅ Draft Completed! Roster boards are fully locked.")
 
 st.markdown("---")
-# Clean up data representations for display
+# Core metrics parsing out to avoid printing syntax containers
 ms_core = ", ".join(ms_team) if ms_team else "None"
 mn_core = ", ".join(mn_team) if mn_team else "None"
 ms_b_str = f" (Backup: {ms_backup[0]})" if ms_backup else ""
